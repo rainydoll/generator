@@ -1,0 +1,25 @@
+{
+  "name": "generator",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "ts-node src/index.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/merge-images": "^1.2.1",
+    "@types/node": "^16.10.2",
+    "@types/yamljs": "^0.2.31",
+    "ts-node": "^10.2.1",
+    "typescript": "^4.4.3"
+  },
+  "dependencies": {
+    "canvas": "^2.8.0",
+    "merge-images": "^2.0.0",
+    "yamljs": "^0.3.0"
+  }
+}
