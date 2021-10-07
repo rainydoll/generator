@@ -1,7 +1,6 @@
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { exit } from "process";
 import * as yaml from "yamljs";
-import mergeImages from "merge-images";
 import { Canvas, Image } from 'canvas';
 
 interface ComponentItem {
@@ -100,6 +99,35 @@ function fillItemIndex(config: Config) {
   }
 }
 
+type ImageCache = { [k: string]: Image };
+const imageCache: ImageCache = {};
+
+async function loadImage(file: string): Promise<Image> {
+  const c = imageCache[file];
+  if (c !== undefined) return c;
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onerror = reject;
+    image.onload = () => {
+      imageCache[file] = image;
+      resolve(image);
+    };
+    image.src = file;  
+  });
+}
+
+function mergeImages(images: Image[], file: string) {
+  const w = images[0].width;
+  const h = images[0].height;
+  const canvas = new Canvas(w, h);
+  const c = canvas.getContext("2d");
+  for (const img of images) {
+    if (img.width != w || img.height != h) console.warn("dimension mismatch detected");
+    c.drawImage(img, 0, 0);
+  }
+  writeFileSync(file, canvas.toBuffer());
+}
+
 async function randomDoll(config: Config, id: number, layer: LayerIndex[]) {
   const components = config.components;
   const current: ComponentItem[] = [];
@@ -117,14 +145,13 @@ async function randomDoll(config: Config, id: number, layer: LayerIndex[]) {
   writeFileSync(`out/${id}.json`, JSON.stringify(metadata, undefined, 2));
 
   // save png
-  const imgs = layer.map((v) => {
+  const ps = layer.map((v) => {
     const folder = components[v.index].folder;
     const number = (current[v.index].index + 1).toString().padStart(2, "0");
-    return `data/${folder}/${folder}${number}${v.suffix ?? ""}.png`
+    return loadImage(`data/${folder}/${folder}${number}${v.suffix ?? ""}.png`);
   });
-  const imgb64 =  await mergeImages(imgs, { Canvas, Image });
-  const img = Buffer.from(imgb64.substr(22), "base64");
-  writeFileSync(`out/${id}.png`, img);
+  const images = await Promise.all(ps);
+  mergeImages(images, `out/${id}.png`);
 }
 
 async function main() {

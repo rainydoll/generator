@@ -19,7 +19,6 @@
   },
   "dependencies": {
     "canvas": "^2.8.0",
-    "merge-images": "^2.0.0",
     "yamljs": "^0.3.0"
   }
 }
