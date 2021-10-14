@@ -58,6 +58,8 @@ interface Metadata {
 const DataDir = "data";
 const OutputDir = "out";
 
+type GeneratedMap = { [key: string]: boolean };
+
 function rand(n: number): number {
   return Math.floor(Math.random() * n);
 }
@@ -111,12 +113,24 @@ function fillItemIndex(config: Config) {
   }
 }
 
-async function randomDoll(config: Config, id: number, layer: LayerIndex[]) {
-  const components = config.components;
-  const current: ComponentItem[] = [];
-  for (const component of components) {
-    current.push(randomComponentItem(component.items));
+function randomComponents(components: ComponentEntry[], generated: GeneratedMap): ComponentItem[]|undefined {
+  for (let i = 0; i < 20; ++i) {
+    const current: ComponentItem[] = [];
+    for (const component of components) {
+      current.push(randomComponentItem(component.items));
+    }
+    const key = current.map(v => v.index).join("|");
+    if (generated[key]) continue;
+    generated[key] = true;
+    return current;  
   }
+  return undefined;
+}
+
+async function randomDoll(config: Config, id: number, layer: LayerIndex[], generated: GeneratedMap): Promise<boolean> {
+  const components = config.components;
+  const current = randomComponents(config.components, generated);
+  if (current === undefined) return false;
 
   const prefix = path.join(OutputDir, `${id}`);
 
@@ -148,6 +162,8 @@ async function randomDoll(config: Config, id: number, layer: LayerIndex[]) {
     const file = config.animation ? path.join(prefix, `${frame}.png`) : `${prefix}.png`
     mergeImages(images, file);
   }
+
+  return true;
 }
 
 function loadConfig(): Config {
@@ -203,10 +219,12 @@ async function main() {
   const layerIndex = getLayerIndex(config.layers, config.components);
   fillItemIndex(config);
 
+  const generated: GeneratedMap = {};
+
   for (let i = 0; i < config.count; ++i) {
     const id = i + 1;
     console.log(`generating #${id}`);
-    await randomDoll(config, id, layerIndex);
+    if (!await randomDoll(config, id, layerIndex, generated)) break;
   }
 
   console.log("done");
