@@ -10,6 +10,7 @@ interface ComponentItem {
   trait_value?: string;
   weight: number;
   index: number;
+  frames?: number;
 }
 
 interface ComponentEntry {
@@ -131,7 +132,7 @@ async function randomDoll(config: Config, id: number, layer: LayerIndex[]) {
   }
 
   // save png
-  const frames = layer.map((v) => v.frames ?? 1);
+  const frames = layer.map((v) =>  current[v.index].frames ?? v.frames ?? 1);
   const step = config.animation ? lcm(frames) : 1;
   if (config.animation && !existsSync(prefix)) mkdirSync(prefix);
   for (let i = 0; i < step; ++i) {
@@ -153,6 +154,8 @@ function loadConfig(): Config {
   let config: any;
   if (existsSync("config.yaml")) {
     config = yaml.load("config.yaml");
+  } else {
+    console.log("no config.yaml use auto-discovery mode");
   }
   if (config === undefined) config = {};
   if (config.count === undefined) config.count = 100;
@@ -162,10 +165,12 @@ function loadConfig(): Config {
     for (const folder of globSync(path.join(DataDir, "*"))) {
       const f = folder.substr(DataDir.length + 1); // data/
       layers.push({ folder: f });
-    }  
+    }
+    console.log(`${layers.length} folders detected (${layers.map(v => v.folder).join(", ")})`);
     config.layers = layers;
   }
   if (config.components === undefined) {
+    console.log("auto-discovery components");
     const layers: LayerConfig[] = config.layers;
     const folders: { [folder: string]: number } = {};
     for (const layer of layers) {
@@ -187,7 +192,6 @@ function loadConfig(): Config {
     }
     config.components = components;
   }
-  console.log(config);
   return config;
 }
 
