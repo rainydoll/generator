@@ -1,9 +1,11 @@
 import { existsSync, mkdirSync, writeFileSync } from "fs";
-import path from "path/posix";
+import { sync as globSync } from "glob";
+import path from "path";
 import { exit } from "process";
 import * as yaml from "yamljs";
 import { lcm } from "./gcd";
 import { loadImage, mergeImages } from "./merge-images";
+
 interface ComponentItem {
   trait_value?: string;
   weight: number;
@@ -30,10 +32,12 @@ interface LayerIndex {
 
 interface Config {
   count: number;
-  name: string;
-  description: string;
-  image: string;
   animation: boolean;
+  metadata?: {
+    name: string;
+    description: string;
+    image: string;  
+  };
   components: ComponentEntry[];
   layers: LayerConfig[];
 }
@@ -49,6 +53,9 @@ interface Metadata {
   image: string;
   attributes: Attribute[];
 }
+
+const DataDir = "data";
+const OutputDir = "out";
 
 function rand(n: number): number {
   return Math.floor(Math.random() * n);
@@ -110,16 +117,18 @@ async function randomDoll(config: Config, id: number, layer: LayerIndex[]) {
     current.push(randomComponentItem(component.items));
   }
 
-  const prefix = path.join("out", `${id}`);
+  const prefix = path.join(OutputDir, `${id}`);
 
-  // save metadata
-  const metadata: Metadata = {
-    name: `${config.name} #${id}`,
-    description: config.description,
-    image: config.image.replace("{}", `${id}`),
-    attributes: extractAttrubites(config.components, current),
-  };
-  writeFileSync(prefix + ".json", JSON.stringify(metadata, undefined, 2));
+  if (config.metadata) {
+    // save metadata
+    const metadata: Metadata = {
+      name: `${config.metadata.name} #${id}`,
+      description: config.metadata.description,
+      image: config.metadata.image.replace("{}", `${id}`),
+      attributes: extractAttrubites(config.components, current),
+    };
+    writeFileSync(prefix + ".json", JSON.stringify(metadata, undefined, 2));
+  }
 
   // save png
   const frames = layer.map((v) => v.frames ?? 1);
@@ -131,7 +140,7 @@ async function randomDoll(config: Config, id: number, layer: LayerIndex[]) {
       const number = (current[v.index].index + 1).toString().padStart(2, "0");
       const suffix = v.suffix ? "-" + v.suffix : "";
       const frame = frames[vi] > 1 ? "-" + ((i % frames[vi]) + 1).toString().padStart(2, "0") : "";
-      return loadImage(path.join("data", folder, `${folder}${number}${suffix}${frame}.png`));
+      return loadImage(path.join(DataDir, folder, `${number}${suffix}${frame}.png`));
     });
     const images = await Promise.all(ps);
     const frame = (i + 1).toString().padStart(2, "0");
@@ -140,16 +149,58 @@ async function randomDoll(config: Config, id: number, layer: LayerIndex[]) {
   }
 }
 
-async function main() {
-  const config: Config = yaml.load("config.yaml");
+function loadConfig(): Config {
+  let config: any;
+  if (existsSync("config.yaml")) {
+    config = yaml.load("config.yaml");
+  }
+  if (config === undefined) config = {};
+  if (config.count === undefined) config.count = 100;
+  if (config.animation === undefined) config.animation = false;
+  if (config.layers === undefined) {
+    const layers: LayerConfig[] = [];
+    for (const folder of globSync(path.join(DataDir, "*"))) {
+      const f = folder.substr(DataDir.length + 1); // data/
+      layers.push({ folder: f });
+    }  
+    config.layers = layers;
+  }
+  if (config.components === undefined) {
+    const layers: LayerConfig[] = config.layers;
+    const folders: { [folder: string]: number } = {};
+    for (const layer of layers) {
+      folders[layer.folder] = (folders[layer.folder] ?? 0) + 1;
+    }
+    const components: ComponentEntry[] = [];
+    for (const layer of layers) {
+      const items: ComponentItem[] = [];
+      for (const file of globSync(path.join(DataDir, layer.folder, "*.png"), { nocase: true })) {
+        items.push({ weight: 1, index: 0 });
+      }
+      // in case of one component with multiple layers, remove exceed images
+      const componentLayer = folders[layer.folder];
+      if (componentLayer > 1) {
+        const l = items.length / componentLayer;
+        items.splice(l, items.length - l);
+      }
+      components.push({ trait_type: "", folder: layer.folder, items });  
+    }
+    config.components = components;
+  }
+  console.log(config);
+  return config;
+}
 
-  if (!existsSync("out")) mkdirSync("out");
+async function main() {
+  const config = loadConfig();
+
+  if (!existsSync(OutputDir)) mkdirSync(OutputDir);
 
   const layerIndex = getLayerIndex(config.layers, config.components);
   fillItemIndex(config);
 
   for (let i = 0; i < config.count; ++i) {
-    const id = i + 1
+    const id = i + 1;
     console.log(`generating #${id}`);
     await randomDoll(config, id, layerIndex);
   }

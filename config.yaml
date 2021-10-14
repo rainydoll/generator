@@ -1,8 +1,10 @@
 # numbers of generating NFT
 count: 10
-name: "Sunny Doll"
-description: "Unique character from Rainy Land. The sunny doll variant keeps the world lively with sunshine."
-image: "https://sunnydoll.com/doll/{}.png"
+animation: false
+metadata:
+  name: "Sunny Doll"
+  description: "Unique character from Rainy Land. The sunny doll variant keeps the world lively with sunshine."
+  image: "https://sunnydoll.com/doll/{}.png"
 # rendering layer from back to front
 # one component can render in multiple layers
 layers:
