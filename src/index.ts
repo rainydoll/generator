@@ -155,7 +155,11 @@ async function randomDoll(config: Config, id: number, layer: LayerIndex[], gener
       const number = (current[v.index].index + 1).toString().padStart(2, "0");
       const suffix = v.suffix ? "-" + v.suffix : "";
       const frame = frames[vi] > 1 ? "-" + ((i % frames[vi]) + 1).toString().padStart(2, "0") : "";
-      return loadImage(path.join(DataDir, folder, `${number}${suffix}${frame}.png`));
+      // find all case-insensitive files
+      const file = path.join(DataDir, folder, `${number}${suffix}${frame}.png`);
+      const f = globSync(file, { nocase: true });
+      if (f.length !== 1) throw "need exactly 1 file";
+      return loadImage(f[0]);
     });
     const images = await Promise.all(ps);
     const frame = (i + 1).toString().padStart(2, "0");
