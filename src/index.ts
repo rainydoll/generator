@@ -20,13 +20,8 @@ interface ComponentEntry {
 }
 
 interface LayerConfig {
-  folder: string;
-  suffix?: string;
-  frames?: number;
-}
-
-interface LayerIndex {
   index: number;
+  folder: string;
   suffix?: string;
   frames?: number;
 }
@@ -95,22 +90,20 @@ function extractAttrubites(components: ComponentEntry[], items: ComponentItem[])
   return attributes;
 }
 
-function getLayerIndex(config: LayerConfig[], components: ComponentEntry[]): LayerIndex[] {
+function fillIndex(config: Config) {
+  const layers = config.layers;
+  const components = config.components;
   const folderIndex: {[k: string]: number} = {};
-  components.map((v, i) => folderIndex[v.folder] = i);
-  return config.map<LayerIndex>((v) => {
-    const folder = v.folder;
-    if (folderIndex[folder] === undefined) throw `unknown folder ${folder}`;
-    return { index: folderIndex[folder], suffix: v.suffix, frames: v.frames };
+  components.map((v, i) => { 
+    folderIndex[v.folder] = i;
+    for (const i in v.items)
+      v.items[i].index = parseInt(i);
   });
-}
-
-function fillItemIndex(config: Config) {
-  for (const component of config.components) {
-    for (const i in component.items) {
-      component.items[i].index = parseInt(i);
-    }
-  }
+  layers.map((layer) => {
+    const folder = layer.folder;
+    if (folderIndex[folder] === undefined) throw `unknown folder ${folder}`;
+    layer.index = folderIndex[folder];
+  });
 }
 
 function randomComponents(components: ComponentEntry[], generated: GeneratedMap): ComponentItem[]|undefined {
@@ -127,7 +120,7 @@ function randomComponents(components: ComponentEntry[], generated: GeneratedMap)
   return undefined;
 }
 
-async function randomDoll(config: Config, id: number, layer: LayerIndex[], generated: GeneratedMap): Promise<boolean> {
+async function randomDoll(config: Config, id: number, generated: GeneratedMap): Promise<boolean> {
   const components = config.components;
   const current = randomComponents(config.components, generated);
   if (current === undefined) return false;
@@ -146,11 +139,12 @@ async function randomDoll(config: Config, id: number, layer: LayerIndex[], gener
   }
 
   // save png
-  const frames = layer.map((v) =>  current[v.index].frames ?? v.frames ?? 1);
+  const layers = config.layers;
+  const frames = layers.map((v) =>  current[v.index].frames ?? v.frames ?? 1);
   const step = config.animation ? lcm(frames) : 1;
   if (config.animation && !existsSync(prefix)) mkdirSync(prefix);
   for (let i = 0; i < step; ++i) {
-    const ps = layer.map((v, vi) => {
+    const ps = layers.map((v, vi) => {
       const folder = components[v.index].folder;
       const number = (current[v.index].index + 1).toString().padStart(2, "0");
       const suffix = v.suffix ? "-" + v.suffix : "";
@@ -184,10 +178,13 @@ function loadConfig(): Config {
     const layers: LayerConfig[] = [];
     for (const folder of globSync(path.join(DataDir, "*"))) {
       const f = folder.substr(DataDir.length + 1); // data/
-      layers.push({ folder: f });
+      layers.push({ folder: f, index: -1 });
     }
     console.log(`${layers.length} folders detected (${layers.map(v => v.folder).join(", ")})`);
     config.layers = layers;
+  }
+  if (config.animations === undefined) {
+    config.animations = [];
   }
   if (config.components === undefined) {
     console.log("auto-discovery components");
@@ -220,15 +217,14 @@ async function main() {
 
   if (!existsSync(OutputDir)) mkdirSync(OutputDir);
 
-  const layerIndex = getLayerIndex(config.layers, config.components);
-  fillItemIndex(config);
+  fillIndex(config);
 
   const generated: GeneratedMap = {};
 
   for (let i = 0; i < config.count; ++i) {
     const id = i + 1;
     console.log(`generating #${id}`);
-    if (!await randomDoll(config, id, layerIndex, generated)) break;
+    if (!await randomDoll(config, id, generated)) break;
   }
 
   console.log("done");
