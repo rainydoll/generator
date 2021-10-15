@@ -18,14 +18,20 @@ export async function loadImage(file: string): Promise<Image> {
   });
 }
 
-export function mergeImages(images: Image[], file: string) {
-  const w = images[0].width;
-  const h = images[0].height;
+export function mergeImages(opts: MergeOptions[], file: string) {
+  const w = opts[0].image.width;
+  const h = opts[0].image.height;
   const canvas = new Canvas(w, h);
   const c = canvas.getContext("2d");
-  for (const img of images) {
-    if (img.width != w || img.height != h) console.warn("dimension mismatch detected");
-    c.drawImage(img, 0, 0);
+  for (const opt of opts) {
+    if (opt.image.width != w || opt.image.height != h) console.warn("dimension mismatch detected");
+    c.drawImage(opt.image, opt.x ?? 0, opt.y ?? 0);
   }
   writeFileSync(file, canvas.toBuffer());
+}
+
+export interface MergeOptions {
+  image: Image;
+  x?: number;
+  y?: number;
 }

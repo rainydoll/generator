@@ -4,7 +4,7 @@ import path from "path";
 import { exit } from "process";
 import * as yaml from "yamljs";
 import { lcm } from "./gcd";
-import { loadImage, mergeImages } from "./merge-images";
+import { loadImage, mergeImages, MergeOptions } from "./merge-images";
 
 interface ComponentItem {
   trait_value?: string;
@@ -20,10 +20,22 @@ interface ComponentEntry {
 }
 
 interface LayerConfig {
-  index: number;
+  index: number;  // folder index
   folder: string;
   suffix?: string;
   frames?: number;
+}
+
+interface TranslationEntry {
+  index: number;  // layer index
+  folder: string;
+  suffix?: string;
+  x: number;
+  y: number;
+}
+
+interface AnimationEntry {
+  translates?: TranslationEntry[];
 }
 
 interface Config {
@@ -34,6 +46,7 @@ interface Config {
     description: string;
     image: string;  
   };
+  animations: AnimationEntry[];
   components: ComponentEntry[];
   layers: LayerConfig[];
 }
@@ -91,18 +104,25 @@ function extractAttrubites(components: ComponentEntry[], items: ComponentItem[])
 }
 
 function fillIndex(config: Config) {
-  const layers = config.layers;
-  const components = config.components;
   const folderIndex: {[k: string]: number} = {};
-  components.map((v, i) => { 
+  config.components.map((v, i) => { 
     folderIndex[v.folder] = i;
     for (const i in v.items)
       v.items[i].index = parseInt(i);
   });
-  layers.map((layer) => {
-    const folder = layer.folder;
+  const layers = config.layers;
+  layers.map((v) => {
+    const folder = v.folder;
     if (folderIndex[folder] === undefined) throw `unknown folder ${folder}`;
-    layer.index = folderIndex[folder];
+    v.index = folderIndex[folder];
+  });
+  config.animations.map((v) => {
+    if (v.translates === undefined) return;
+    for (const t of v.translates) {
+      const index = layers.findIndex((v) => v.folder === t.folder && v.suffix === t.suffix);
+      if (index < 0) throw `bad folder ${t.folder}`;
+      t.index = index;
+    }
   });
 }
 
@@ -141,6 +161,8 @@ async function randomDoll(config: Config, id: number, generated: GeneratedMap): 
   // save png
   const layers = config.layers;
   const frames = layers.map((v) =>  current[v.index].frames ?? v.frames ?? 1);
+  const animations = config.animations;
+  if (animations.length > 1) frames.push(animations.length);
   const step = config.animation ? lcm(frames) : 1;
   if (config.animation && !existsSync(prefix)) mkdirSync(prefix);
   for (let i = 0; i < step; ++i) {
@@ -156,9 +178,15 @@ async function randomDoll(config: Config, id: number, generated: GeneratedMap): 
       return loadImage(f[0]);
     });
     const images = await Promise.all(ps);
+    const opts = images.map<MergeOptions>((image) => ({ image }));
+    const animation = animations.length > 0 ? animations[i % animations.length] : {};
+    if (animation.translates) animation.translates.map((v) => {
+      opts[v.index].x = v.x;
+      opts[v.index].y = v.y;
+    });
     const frame = (i + 1).toString().padStart(2, "0");
     const file = config.animation ? path.join(prefix, `${frame}.png`) : `${prefix}.png`
-    mergeImages(images, file);
+    mergeImages(opts, file);
   }
 
   return true;
