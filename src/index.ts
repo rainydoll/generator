@@ -4,7 +4,10 @@ import path from "path";
 import { exit } from "process";
 import * as yaml from "yamljs";
 import { lcm } from "./gcd";
+import { loadJS } from "./hook";
 import { loadImage, mergeImages, MergeOptions } from "./merge-images";
+
+type HookFunction = (current: number[]) => number[]|undefined;
 
 interface ComponentItem {
   trait_value?: string;
@@ -41,10 +44,12 @@ interface AnimationEntry {
 interface Config {
   count: number;
   animation: boolean;
+  hook?: string;
+  hook_function?: HookFunction;
   metadata?: {
     name: string;
     description: string;
-    image: string;  
+    image: string;
   };
   animations: AnimationEntry[];
   components: ComponentEntry[];
@@ -97,7 +102,7 @@ function extractAttrubites(components: ComponentEntry[], items: ComponentItem[])
       attributes.push({
         trait_type: c.trait_type,
         value: v.trait_value,
-      });  
+      });
     }
   }
   return attributes;
@@ -126,23 +131,31 @@ function fillIndex(config: Config) {
   });
 }
 
-function randomComponents(components: ComponentEntry[], generated: GeneratedMap): ComponentItem[]|undefined {
+function randomComponents(components: ComponentEntry[], generated: GeneratedMap, hook?: HookFunction): ComponentItem[]|undefined {
   for (let i = 0; i < 20; ++i) {
     const current: ComponentItem[] = [];
     for (const component of components) {
       current.push(randomComponentItem(component.items));
     }
+    // hook generation
+    if (hook !== undefined) {
+      const updated = hook(current.map(v => v.index));
+      if (updated !== undefined) {
+        current.splice(0, current.length);
+        components.map((v, vi) => current.push(v.items[updated[vi]]));
+      }
+    }
     const key = current.map(v => v.index).join("|");
     if (generated[key]) continue;
     generated[key] = true;
-    return current;  
+    return current;
   }
   return undefined;
 }
 
 async function randomDoll(config: Config, id: number, generated: GeneratedMap): Promise<boolean> {
   const components = config.components;
-  const current = randomComponents(config.components, generated);
+  const current = randomComponents(config.components, generated, config.hook_function);
   if (current === undefined) return false;
 
   const prefix = path.join(OutputDir, `${id}`);
@@ -202,6 +215,9 @@ function loadConfig(): Config {
   if (config === undefined) config = {};
   if (config.count === undefined) config.count = 100;
   if (config.animation === undefined) config.animation = false;
+  if (config.hook !== undefined) {
+    config.hook_function = loadJS(config.hook).hook;
+  }
   if (config.layers === undefined) {
     const layers: LayerConfig[] = [];
     for (const folder of globSync(path.join(DataDir, "*"))) {
@@ -233,7 +249,7 @@ function loadConfig(): Config {
         const l = items.length / componentLayer;
         items.splice(l, items.length - l);
       }
-      components.push({ trait_type: "", folder: layer.folder, items });  
+      components.push({ trait_type: "", folder: layer.folder, items });
     }
     config.components = components;
   }
