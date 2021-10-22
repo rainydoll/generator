@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { sync as globSync } from "glob";
+import minimist from "minimist";
 import path from "path";
 import { exit } from "process";
 import * as yaml from "yamljs";
@@ -153,11 +154,16 @@ function randomComponents(components: ComponentEntry[], generated: GeneratedMap,
   return undefined;
 }
 
-async function randomDoll(config: Config, id: number, generated: GeneratedMap): Promise<boolean> {
-  const components = config.components;
-  const current = randomComponents(config.components, generated, config.hook_function);
-  if (current === undefined) return false;
+function sequencialComponents(components: ComponentEntry[], index: number): ComponentItem[] {
+  const current: ComponentItem[] = [];
+  for (const component of components) {
+    current.push(component.items[index % component.items.length]);
+  }
+  return current;  
+}
 
+async function saveDoll(config: Config, id: number, current: ComponentItem[]) {
+  const components = config.components;
   const prefix = path.join(OutputDir, `${id}`);
 
   if (config.metadata) {
@@ -166,7 +172,7 @@ async function randomDoll(config: Config, id: number, generated: GeneratedMap): 
       name: `${config.metadata.name} #${id}`,
       description: config.metadata.description,
       image: config.metadata.image.replace("{}", `${id}`),
-      attributes: extractAttrubites(config.components, current),
+      attributes: extractAttrubites(components, current),
     };
     writeFileSync(prefix + ".json", JSON.stringify(metadata, undefined, 2));
   }
@@ -201,8 +207,6 @@ async function randomDoll(config: Config, id: number, generated: GeneratedMap): 
     const file = config.animation ? path.join(prefix, `${frame}.png`) : `${prefix}.png`
     mergeImages(opts, file);
   }
-
-  return true;
 }
 
 function loadConfig(): Config {
@@ -215,14 +219,11 @@ function loadConfig(): Config {
   if (config === undefined) config = {};
   if (config.count === undefined) config.count = 100;
   if (config.animation === undefined) config.animation = false;
-  if (config.hook !== undefined) {
-    config.hook_function = loadJS(config.hook).hook;
-  }
   if (config.layers === undefined) {
     const layers: LayerConfig[] = [];
     for (const folder of globSync(path.join(DataDir, "*"))) {
       const f = folder.substr(DataDir.length + 1); // data/
-      layers.push({ folder: f, index: -1 });
+      layers.push({ folder: f } as LayerConfig);
     }
     console.log(`${layers.length} folders detected (${layers.map(v => v.folder).join(", ")})`);
     config.layers = layers;
@@ -233,31 +234,57 @@ function loadConfig(): Config {
   if (config.components === undefined) {
     console.log("auto-discovery components");
     const layers: LayerConfig[] = config.layers;
-    const folders: { [folder: string]: number } = {};
+    const folderLayers: { [folder: string]: number } = {};
     for (const layer of layers) {
-      folders[layer.folder] = (folders[layer.folder] ?? 0) + 1;
+      folderLayers[layer.folder] = (folderLayers[layer.folder] ?? 0) + 1;
     }
+    const inspectedFolders: { [folder: string]: boolean } = {};
     const components: ComponentEntry[] = [];
     for (const layer of layers) {
+      const folder = layer.folder;
+      if (inspectedFolders[folder]) continue;
+      inspectedFolders[folder] = true;
       const items: ComponentItem[] = [];
-      for (const file of globSync(path.join(DataDir, layer.folder, "*.png"), { nocase: true })) {
-        items.push({ weight: 1, index: 0 });
+      for (let i = 1; i < 100; ++i) {
+        const files = globSync(path.join(DataDir, folder, `${i.toString().padStart(2, "0")}*.png`), { nocase: true })
+        if (files.length === 0) break;
+        const frames = Math.ceil(files.length / folderLayers[folder]);
+        const item = { trait_value: `${folder} #${i}`, weight: 1 } as ComponentItem;
+        if (frames > 1) item.frames = frames;
+        items.push(item);
       }
-      // in case of one component with multiple layers, remove exceed images
-      const componentLayer = folders[layer.folder];
-      if (componentLayer > 1) {
-        const l = items.length / componentLayer;
-        items.splice(l, items.length - l);
-      }
-      components.push({ trait_type: "", folder: layer.folder, items });
+      components.push({ trait_type: folder, folder: folder, items });
+      console.log(`folder ${folder} ${items.length} items`);
     }
     config.components = components;
   }
   return config;
 }
 
+function fillConfig(config: Config) {
+  if (config.hook !== undefined) {
+    config.hook_function = loadJS(config.hook).hook;
+  }
+}
+
 async function main() {
+  const argv = minimist(process.argv.slice(2), {
+    alias: {
+      "h": "help",
+      "s": "sequence",
+    },
+  });
+
+  if (argv["help"]) {
+    console.error(`usage: ${path.basename(process.argv[1])} [--help|-h] [--sequence|-s] [--export-config <config.yaml>] [--skip-images]`);
+    exit(1);
+  }
+
   const config = loadConfig();
+  if (argv["export-config"]) {
+    writeFileSync(argv["export-config"], yaml.stringify(config, 4, 2));
+  }
+  fillConfig(config);
 
   if (!existsSync(OutputDir)) mkdirSync(OutputDir);
 
@@ -268,7 +295,11 @@ async function main() {
   for (let i = 0; i < config.count; ++i) {
     const id = i + 1;
     console.log(`generating #${id}`);
-    if (!await randomDoll(config, id, generated)) break;
+    const components = config.components;
+    const current = argv["sequence"] ? sequencialComponents(components, i) : randomComponents(components, generated, config.hook_function);
+    if (!current) break;
+    if (!argv["skip-images"])
+      await saveDoll(config, id, current);
   }
 
   console.log("done");
