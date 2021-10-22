@@ -1,10 +1,14 @@
 {
-  "name": "generator",
+  "name": "@rainydoll/generator",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "app/index.js",
+  "bin": {
+    "rainydoll": "app/index.js"
+  },
   "scripts": {
     "start": "ts-node src/index.ts",
+    "prepack": "rm -rf app && tsc && sed -i .bak '1s/^/#!\\/usr\\/bin\\/env node\\n/' app/index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
