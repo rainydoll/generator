@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { sync as globSync } from "glob";
 import minimist from "minimist";
 import path from "path";
@@ -47,11 +47,7 @@ interface Config {
   animation: boolean;
   hook?: string;
   hook_function?: HookFunction;
-  metadata?: {
-    name: string;
-    description: string;
-    image: string;
-  };
+  metadata: Metadata;
   animations: AnimationEntry[];
   components: ComponentEntry[];
   layers: LayerConfig[];
@@ -66,7 +62,9 @@ interface Metadata {
   name: string;
   description: string;
   image: string;
-  attributes: Attribute[];
+  source?: string;
+  parts?: number[];
+  attributes?: Attribute[];
 }
 
 const DataDir = "data";
@@ -162,20 +160,50 @@ function sequencialComponents(components: ComponentEntry[], index: number): Comp
   return current;  
 }
 
+function loadSequencialComponents(components: ComponentEntry[], count: number): ComponentItem[][] {
+  const result: ComponentItem[][] = [];
+  for (let i = 0; i < count; ++i)
+    result.push(sequencialComponents(components, i));
+  return result;
+}
+
+function loadMetadata(components: ComponentEntry[], filename: string): ComponentItem[][] {
+  const metadata: Metadata[] = JSON.parse(readFileSync(filename, "utf-8"));
+  return metadata.map((e) => {
+    if (e.parts === undefined) throw "no parts";
+    return e.parts.map((v, vi) => components[vi].items[v]);
+  });
+}
+
+function loadParts(config: Config, argv: minimist.ParsedArgs): ComponentItem[][] {
+  const components = config.components;
+  if (argv["load-metadata"]) {
+    return loadMetadata(components, argv["load-metadata"]);
+  }
+  if (argv["sequence"]) {
+    return loadSequencialComponents(components, config.count);
+  }
+  return [];
+}
+
+function getMetadata(config: Config, id: number, current: ComponentItem[]): Metadata {
+  const master = config.metadata;
+  if (master === undefined) throw "no metadata";
+  const components = config.components;
+  const metadata: Metadata = {
+    name: `${master.name} #${id}`,
+    description: master.description,
+    image: master.image.replace("{}", `${id}`),
+    source: master.source,
+    parts: current.map((v) => v.index),
+    attributes: extractAttrubites(components, current),
+  };
+  return metadata;
+}
+
 async function saveDoll(config: Config, id: number, current: ComponentItem[]) {
   const components = config.components;
   const prefix = path.join(OutputDir, `${id}`);
-
-  if (config.metadata) {
-    // save metadata
-    const metadata: Metadata = {
-      name: `${config.metadata.name} #${id}`,
-      description: config.metadata.description,
-      image: config.metadata.image.replace("{}", `${id}`),
-      attributes: extractAttrubites(components, current),
-    };
-    writeFileSync(prefix + ".json", JSON.stringify(metadata, undefined, 2));
-  }
 
   // save png
   const layers = config.layers;
@@ -276,7 +304,7 @@ async function main() {
   });
 
   if (argv["help"]) {
-    console.error(`usage: ${path.basename(process.argv[1])} [--help|-h] [--sequence|-s] [--export-config <config.yaml>] [--skip-images]`);
+    console.error(`usage: ${path.basename(process.argv[1])} [--help|-h] [--sequence|-s] [--export-config <config.yaml>] [--skip-images] [--load-metadata <metadata.json>] [--save-metadata <metadata.json>]`);
     exit(1);
   }
 
@@ -290,17 +318,25 @@ async function main() {
 
   fillIndex(config);
 
+  const components = config.components;
   const generated: GeneratedMap = {};
+  const metadata: Metadata[] = [];
 
-  for (let i = 0; i < config.count; ++i) {
+  const parts = loadParts(config, argv);
+  const count = parts.length > 0 ? parts.length : config.count;
+
+  for (let i = 0; i < count; ++i) {
     const id = i + 1;
     console.log(`generating #${id}`);
-    const components = config.components;
-    const current = argv["sequence"] ? sequencialComponents(components, i) : randomComponents(components, generated, config.hook_function);
+    const current = parts[i] ?? randomComponents(components, generated, config.hook_function);
     if (!current) break;
     if (!argv["skip-images"])
       await saveDoll(config, id, current);
+    if (config.metadata !== undefined)
+      metadata.push(getMetadata(config, id, current));
   }
+
+  if (argv["save-metadata"]) writeFileSync(argv["save-metadata"], JSON.stringify(metadata));
 
   console.log("done");
 }
