@@ -304,7 +304,7 @@ async function main() {
   });
 
   if (argv["help"]) {
-    console.error(`usage: ${path.basename(process.argv[1])} [--help|-h] [--sequence|-s] [--export-config <config.yaml>] [--skip-images] [--load-metadata <metadata.json>] [--save-metadata <metadata.json>]`);
+    console.error(`usage: ${path.basename(process.argv[1])} [--help|-h] [--sequence|-s] [--export-config <config.yaml>] [--skip-images] [--load-metadata <metadata.json>] [--save-metadata <metadata.json>] [--save-statistics <statistics.json>]`);
     exit(1);
   }
 
@@ -321,6 +321,7 @@ async function main() {
   const components = config.components;
   const generated: GeneratedMap = {};
   const metadata: Metadata[] = [];
+  const statistics: number[][] = components.map((e) => e.items.map((v) => 0));
 
   const parts = loadParts(config, argv);
   const count = parts.length > 0 ? parts.length : config.count;
@@ -334,9 +335,11 @@ async function main() {
       await saveDoll(config, id, current);
     if (config.metadata !== undefined)
       metadata.push(getMetadata(config, id, current));
+    current.map((v, vi) => statistics[vi][v.index]++ );
   }
 
   if (argv["save-metadata"]) writeFileSync(argv["save-metadata"], JSON.stringify(metadata));
+  if (argv["save-statistics"]) writeFileSync(argv["save-statistics"], JSON.stringify(statistics));
 
   console.log("done");
 }
