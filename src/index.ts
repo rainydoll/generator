@@ -304,7 +304,7 @@ async function main() {
   });
 
   if (argv["help"]) {
-    console.error(`usage: ${path.basename(process.argv[1])} [--help|-h] [--sequence|-s] [--export-config <config.yaml>] [--skip-images] [--load-metadata <metadata.json>] [--save-metadata <metadata.json>] [--save-statistics <statistics.json>]`);
+    console.error(`usage: ${path.basename(process.argv[1])} [--help|-h] [--sequence|-s] [--export-config <config.yaml>] [--skip-images] [--load-metadata <metadata.json>] [--save-metadata <metadata.json>] [--save-statistics <statistics.json>] [--offset <start generating at>] [--count <generating count>]`);
     exit(1);
   }
 
@@ -324,9 +324,10 @@ async function main() {
   const statistics: number[][] = components.map((e) => e.items.map((v) => 0));
 
   const parts = loadParts(config, argv);
-  const count = parts.length > 0 ? parts.length : config.count;
+  const offset = argv["offset"] ? parseInt(argv["offset"]) - 1 : 0;
+  const count = argv["count"] ?  offset + parseInt(argv["count"]) : (parts.length > 0 ? parts.length : config.count);
 
-  for (let i = 0; i < count; ++i) {
+  for (let i = offset; i < count; ++i) {
     const id = i + 1;
     console.log(`generating #${id}`);
     const current = parts[i] ?? randomComponents(components, generated, config.hook_function);
