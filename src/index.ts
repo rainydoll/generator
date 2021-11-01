@@ -221,7 +221,7 @@ async function saveDoll(config: Config, id: number, current: ComponentItem[]) {
       // find all case-insensitive files
       const file = path.join(DataDir, folder, `${number}${suffix}${frame}.png`);
       const f = globSync(file, { nocase: true });
-      if (f.length !== 1) throw "need exactly 1 file";
+      if (f.length !== 1) throw `need exactly 1 file ${file} ${JSON.stringify(f)}`;
       return loadImage(f[0]);
     });
     const images = await Promise.all(ps);
@@ -273,8 +273,8 @@ function loadConfig(): Config {
       if (inspectedFolders[folder]) continue;
       inspectedFolders[folder] = true;
       const items: ComponentItem[] = [];
-      for (let i = 1; i < 100; ++i) {
-        const files = globSync(path.join(DataDir, folder, `${i.toString().padStart(2, "0")}*.png`), { nocase: true })
+      for (let i = 1; i < 900; ++i) {
+        const files = globSync(path.join(DataDir, folder, `${i.toString().padStart(2, "0")}?(-*).png`), { nocase: true });
         if (files.length === 0) break;
         const frames = Math.ceil(files.length / folderLayers[folder]);
         const item = { trait_value: `${folder} #${i}`, weight: 1 } as ComponentItem;
