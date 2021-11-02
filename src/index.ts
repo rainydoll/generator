@@ -62,6 +62,7 @@ interface Metadata {
   name: string;
   description: string;
   image: string;
+  id?: number;
   source?: string;
   parts?: number[];
   attributes?: Attribute[];
@@ -194,6 +195,7 @@ function getMetadata(config: Config, id: number, current: ComponentItem[]): Meta
     name: `${master.name} #${id}`,
     description: master.description,
     image: master.image.replace("{}", `${id}`),
+    id: id,
     source: master.source,
     parts: current.map((v) => v.index),
     attributes: extractAttrubites(components, current),
