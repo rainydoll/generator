@@ -15,6 +15,7 @@ interface ComponentItem {
   weight: number;
   index: number;
   frames?: number;
+  attributes?: Attribute[]; // custom/extra attributes
 }
 
 interface ComponentEntry {
@@ -103,6 +104,9 @@ function extractAttrubites(components: ComponentEntry[], items: ComponentItem[])
         trait_type: c.trait_type,
         value: v.trait_value,
       });
+    }
+    if (v.attributes !== undefined) {
+      attributes.push(...v.attributes);
     }
   }
   return attributes;
