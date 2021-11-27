@@ -252,7 +252,6 @@ function loadConfig(): Config {
   }
   if (config === undefined) config = {};
   if (config.count === undefined) config.count = 100;
-  if (config.animation === undefined) config.animation = false;
   if (config.layers === undefined) {
     const layers: LayerConfig[] = [];
     for (const folder of globSync(path.join(DataDir, "*"))) {
@@ -265,6 +264,7 @@ function loadConfig(): Config {
   if (config.animations === undefined) {
     config.animations = [];
   }
+  let animation_detected = false;
   if (config.components === undefined) {
     console.log("auto-discovery components");
     const layers: LayerConfig[] = config.layers;
@@ -284,7 +284,7 @@ function loadConfig(): Config {
         if (files.length === 0) break;
         const frames = Math.ceil(files.length / folderLayers[folder]);
         const item = { trait_value: `${folder} #${i}`, weight: 1 } as ComponentItem;
-        if (frames > 1) item.frames = frames;
+        if (frames > 1) { item.frames = frames; animation_detected = true; };
         items.push(item);
       }
       components.push({ trait_type: folder, folder: folder, items });
@@ -292,6 +292,7 @@ function loadConfig(): Config {
     }
     config.components = components;
   }
+  if (config.animation === undefined) config.animation = animation_detected;
   return config;
 }
 
