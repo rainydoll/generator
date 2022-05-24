@@ -1,2 +1,9 @@
+# install dependencies
+if [ -z `which brew` ] ; then
+  echo brew not found
+  exit 1
+fi
+brew install pkg-config cairo pango libpng jpeg giflib librsvg
+
 cd `dirname $0`
 npm i
